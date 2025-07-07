@@ -4,7 +4,8 @@
     display_name: LAN Connectivity Policy
     api_resource_path: "/vnic/LanConnectivityPolicies"
     api_query_filter: "Name eq '{{ name_prefix }}-lanconnectivity-pol'"
-    want: {
+    want:
+      {
         "Organization":
           {
             "ObjectType": "organization.Organization",
@@ -12,11 +13,6 @@
           },
         "Name": "{{ name_prefix }}-lanconnectivity-pol",
         "AzureQosEnabled": false,
-        # "EthIfs": [],
-        # # {
-        # #   "Moid": "6867649203f2e74701c7f626",
-        # #   "ObjectType": "vnic.EthIf",
-        # # },
         "IqnAllocationType": "None",
         "IqnPool": null,
         "PlacementMode": "custom",
@@ -70,7 +66,8 @@
     display_name: vNic Ethernet Interface
     api_resource_path: "/vnic/EthIfs"
     api_query_filter: "Name eq 'vnic0' and LanConnectivityPolicy.Moid eq '{{ lan_connectivity_policy_moid }}'"
-    want: {
+    want:
+      {
         "Name": "vnic0",
 
         "Cdn":
@@ -104,36 +101,12 @@
             },
           ],
         "FailoverEnabled": true,
-        # "IscsiBootPolicy": null,
-        # "IscsiIpV4AddressAllocationType": "None",
-        # "IscsiIpV4Config": {
-        #   "ClassId": "ippool.IpV4Config",
-        #   "Gateway": "",
-        #   "Netmask": "",
-        #   "ObjectType": "ippool.IpV4Config",
-        #   "PrimaryDns": "",
-        #   "SecondaryDns": ""
-        # },
-        # "IscsiIpV6AddressAllocationType": "None",
-        # "IscsiIpV6Config": {
-        #   "ClassId": "ippool.IpV6Config",
-        #   "Gateway": "",
-        #   "ObjectType": "ippool.IpV6Config",
-        #   "Prefix": 0,
-        #   "PrimaryDns": "",
-        #   "SecondaryDns": ""
-        # },
-        # "IscsiIpv4Address": "",
-        # "IscsiIpv6Address": "",
         "LanConnectivityPolicy":
           {
             "Moid": "{{ lan_connectivity_policy_moid }}",
             "ObjectType": "vnic.LanConnectivityPolicy",
           },
-        # "LcpVnic": null,
-        # "MacAddress": "",
         "MacAddressType": "POOL",
-        # "MacLease": null,
         "MacPool":
           {
             "Moid": "{{ mac_resp.api_response.Moid }}",
@@ -141,7 +114,6 @@
           },
 
         "Order": 0,
-        # "OverriddenList": [],
         "PinGroupName": "",
         "Placement":
           {
@@ -155,41 +127,6 @@
             "SwitchId": "A",
             "Uplink": 0,
           },
-        # "Profile": null,
-        # "SpVnics": [],
-        # "SrcTemplate": null,
-        # "SriovSettings": {
-        #   "ClassId": "vnic.SriovSettings",
-        #   "CompCountPerVf": 5,
-        #   "Enabled": false,
-        #   "IntCountPerVf": 8,
-        #   "ObjectType": "vnic.SriovSettings",
-        #   "RxCountPerVf": 4,
-        #   "TxCountPerVf": 1,
-        #   "VfCount": 64
-        # },
         "StandbyVifId": 0,
-        # "StaticMacAddress": "",
-        # "Tags": [],
-        # "TemplateActions": [],
-        # "TemplateSyncErrors": [],
-        # "TemplateSyncStatus": "None",
-        # "UsnicSettings": {
-        #   "ClassId": "vnic.UsnicSettings",
-        #   "Cos": 5,
-        #   "Count": 0,
-        #   "ObjectType": "vnic.UsnicSettings",
-        #   "UsnicAdapterPolicy": ""
-        # },
         "VifId": 0,
-        # "VmqSettings": {
-        #   "ClassId": "vnic.VmqSettings",
-        #   "Enabled": false,
-        #   "MultiQueueSupport": false,
-        #   "NumInterrupts": 16,
-        #   "NumSubVnics": 64,
-        #   "NumVmqs": 4,
-        #   "ObjectType": "vnic.VmqSettings",
-        #   "VmmqAdapterPolicy": ""
-        # }
       }
