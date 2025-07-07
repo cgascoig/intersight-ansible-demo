@@ -1,0 +1,116 @@
+- name: Renew HTTPS certificate
+  connection: local
+  gather_facts: false
+  hosts: localhost
+  vars:
+    org_name: default
+    name_prefix: AnsibleDemo
+    tags: &tags
+      - Key: Customer
+        Value: CustomerA
+      - Key: Automation
+        Value: Ansible
+  tasks:
+    - ansible.builtin.set_fact:
+        csr_name: "cert-{{ 99999999 | random | to_uuid }}"
+    - name: "Create CSR"
+      cisco.intersight.intersight_rest_api:
+        resource_path: /iam/CertificateRequests
+        update_method: post
+        validate_certs: false
+        api_body:
+          {
+            "Subject":
+              {
+                "Organization": ["Cisco"],
+                "OrganizationalUnit": ["CAI"],
+                "Locality": ["Melbourne"],
+                "State": ["Vic"],
+                "Country": ["AU"],
+                "CommonName": "cg-ia-test-1.lab16.mel.ciscolabs.com",
+              },
+            "EmailAddress": "tes@ex.com",
+            "SelfSigned": false,
+            "SubjectAlternateName":
+              { "DnsName": ["cg-ia-test-1.lab16.mel.ciscolabs.com"] },
+            "Name": "{{ csr_name }}",
+          }
+      register: csr_resp
+
+    - name: "Create Private Key"
+      cisco.intersight.intersight_rest_api:
+        resource_path: /iam/PrivateKeySpecs
+        update_method: post
+        validate_certs: false
+        api_body:
+          {
+            "Algorithm": { "Modulus": 2048, "ObjectType": "pkix.RsaAlgorithm" },
+            "CertificateRequest":
+              {
+                "Moid": "{{ csr_resp.api_response.Moid }}",
+                "ObjectType": "iam.CertificateRequest",
+              },
+          }
+
+    - name: "Get CSR request"
+      cisco.intersight.intersight_rest_api:
+        resource_path: /iam/CertificateRequests
+        validate_certs: false
+        query_params:
+          $filter: "Name eq '{{ csr_name }}'"
+      register: csr_resp2
+      until: csr_resp2.api_response.Request != ""
+      delay: 10
+      retries: 40
+
+    - name: Write CSR to file
+      copy:
+        content: "{{ csr_resp2.api_response.Request}}"
+        dest: "cert/{{ csr_name }}.csr"
+
+    - name: Sign Certificate
+      command: "openssl ca -batch -config ca.cnf -policy signing_policy -extensions signing_req -out {{ csr_name }}.pem -infiles {{ csr_name }}.csr"
+      args:
+        chdir: cert
+
+    # - debug:
+    #     msg: "Signed cert: {{ lookup('ansible.builtin.file', 'cert/'+csr_name+'.pem') }}"
+
+    - name: "Upload new certficate"
+      cisco.intersight.intersight_rest_api:
+        resource_path: /iam/Certificates
+        update_method: post
+        validate_certs: false
+        api_body:
+          {
+            "Certificate":
+              {
+                "PemCertificate": "{{ lookup('ansible.builtin.file', 'cert/'+csr_name+'.pem') }}",
+              },
+            "CertificateRequest":
+              {
+                "Moid": "{{ csr_resp2.api_response.Moid }}",
+                "ObjectType": "iam.CertificateRequest",
+              },
+          }
+      register: cert_resp
+
+    - name: "Get appliance certificate settings Moid"
+      cisco.intersight.intersight_rest_api:
+        resource_path: /appliance/CertificateSettings
+        validate_certs: false
+      register: certsettings_resp
+
+    - name: "Apply new certficate"
+      cisco.intersight.intersight_rest_api:
+        resource_path: "/appliance/CertificateSettings/{{ certsettings_resp.api_response.Moid }}"
+        update_method: post
+        validate_certs: false
+        api_body:
+          {
+            "Certificate":
+              {
+                "Moid": "{{ cert_resp.api_response.Moid }}",
+                "ObjectType": "iam.Certificate",
+              },
+          }
