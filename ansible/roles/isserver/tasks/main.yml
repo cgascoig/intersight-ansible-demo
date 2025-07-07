@@ -1,0 +1,63 @@
+- name: Get server Moid
+  cisco.intersight.intersight_rest_api:
+    resource_path: /compute/PhysicalSummaries
+    query_params:
+      $filter: "Serial eq '{{ server_serial }}'"
+  register: server
+
+- name: Configure Server Profile
+  cisco.intersight.intersight_server_profile:
+    organization: "{{ org_name }}"
+    name: "{{ name_prefix }}-server-profile-{{ server_serial }}"
+    tags: "{{ tags }}"
+    target_platform: FIAttached
+    description: Profile for Server1
+    assigned_server: "{{ server.api_response.Moid }}"
+    boot_order_policy: "{{ name_prefix }}-boot-order-pol"
+    imc_access_policy: "{{ name_prefix }}-imc-access-pol"
+    syslog_policy: "{{ name_prefix }}-syslog-pol"
+    snmp_policy: "{{ name_prefix }}-snmp-pol"
+    bios_policy: "{{ name_prefix }}-bios-pol"
+    virtual_kvm_policy: "{{ name_prefix }}-kvm-pol"
+    lan_connectivity_policy: "{{ name_prefix }}-lanconnectivity-pol"
+    local_user_policy: "{{ name_prefix }}-local_user-pol"
+    ntp_policy: "{{ name_prefix }}-ntp-pol"
+    certificate_policy: "{{ name_prefix }}-certificate-pol"
+    storage_policy: "{{ name_prefix }}-storage-pol"
+    # virtual_media_policy: COS-VM
+  register: server_profile
+
+- name: Wait for profile validation to complete
+  cisco.intersight.intersight_rest_api:
+    resource_path: "/server/Profiles"
+    query_params:
+      $filter: "Name eq '{{ name_prefix }}-server-profile-{{ server_serial }}'"
+  register: profile_results
+  until: (profile_results.api_response.ConfigContext.ControlAction == "No-op")
+  delay: 30
+  retries: 40
+
+- name: Deploy Server Profile
+  cisco.intersight.intersight_rest_api:
+    resource_path: "/server/Profiles/{{ server_profile.api_response.Moid }}"
+    api_body:
+      { "ScheduledActions": [{ "Action": "Deploy", "ProceedOnReboot": false }] }
+  when: (profile_results.api_response.ConfigContext.ControlAction == "No-op") and (profile_results.api_response.ConfigContext.ConfigState != "Associated")
+
+- name: Wait for profile deploy to complete
+  cisco.intersight.intersight_rest_api:
+    resource_path: /server/Profiles
+    query_params:
+      $filter: "Name eq '{{ name_prefix }}-server-profile-{{ server_serial }}'"
+  register: profile_deploy_results
+  until:
+    ('api_response' in profile_deploy_results) and ((profile_deploy_results.api_response.ConfigContext.OperState == 'Ok') or
+    (profile_deploy_results.api_response.ConfigContext.OperState == 'Failed'))
+  delay: 30
+  retries: 40
+
+- name: Report error on deploy fail
+  when: profile_deploy_results.api_response.ConfigContext.OperState == 'Failed'
+  block:
+    - ansible.builtin.fail:
+        msg: "Profile '{{ name_prefix }}-server-profile-{{ server_serial }}' failed to deploy"

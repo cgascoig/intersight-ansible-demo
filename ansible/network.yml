@@ -1,0 +1,195 @@
+- include_role:
+    name: isapi
+  vars:
+    display_name: LAN Connectivity Policy
+    api_resource_path: "/vnic/LanConnectivityPolicies"
+    api_query_filter: "Name eq '{{ name_prefix }}-lanconnectivity-pol'"
+    want: {
+        "Organization":
+          {
+            "ObjectType": "organization.Organization",
+            "Moid": "{{ org_resp.api_response.Moid }}",
+          },
+        "Name": "{{ name_prefix }}-lanconnectivity-pol",
+        "AzureQosEnabled": false,
+        # "EthIfs": [],
+        # # {
+        # #   "Moid": "6867649203f2e74701c7f626",
+        # #   "ObjectType": "vnic.EthIf",
+        # # },
+        "IqnAllocationType": "None",
+        "IqnPool": null,
+        "PlacementMode": "custom",
+        "StaticIqnName": "",
+        "TargetPlatform": "FIAttached",
+      }
+- debug:
+    msg: "isapi_res: {{ isapi_res }}"
+- set_fact:
+    lan_connectivity_policy_moid: "{{ isapi_res.api_response.Moid }}"
+
+# Get the Ethernet Network Group Policy
+- name: "Get Ethernet Network Group Policy Moid"
+  cisco.intersight.intersight_rest_api:
+    resource_path: /fabric/EthNetworkGroupPolicies
+    query_params:
+      $filter: "Name eq 'cg-impi-ethnetgrp'"
+  register: eth_net_group_resp
+# Get the Ethernet Network Control Policy
+- name: "Get Ethernet Network Control Policy Moid"
+  cisco.intersight.intersight_rest_api:
+    resource_path: /fabric/EthNetworkControlPolicies
+    query_params:
+      $filter: "Name eq 'cg-impi-ethnetctrl'"
+  register: eth_net_control_resp
+# Get the Ethernet QoS Policy
+- name: "Get Ethernet QoS Policy Moid"
+  cisco.intersight.intersight_rest_api:
+    resource_path: /vnic/EthQosPolicies
+    query_params:
+      $filter: "Name eq 'MEL-ETH-QOS'"
+  register: eth_qos_resp
+# Get the Ethernet Network Group Policy
+- name: "Get Ethernet Adapter Policy Moid"
+  cisco.intersight.intersight_rest_api:
+    resource_path: /vnic/EthAdapterPolicies
+    query_params:
+      $filter: "Name eq 'MEL-VNIC'"
+  register: eth_adapter_resp
+# Get MAC Address Pool
+- name: "Get MAC Address Pool Moid"
+  cisco.intersight.intersight_rest_api:
+    resource_path: /macpool/Pools
+    query_params:
+      $filter: "Name eq 'MEL-MAC'"
+  register: mac_resp
+
+- include_role:
+    name: isapi
+  vars:
+    display_name: vNic Ethernet Interface
+    api_resource_path: "/vnic/EthIfs"
+    api_query_filter: "Name eq 'vnic0' and LanConnectivityPolicy.Moid eq '{{ lan_connectivity_policy_moid }}'"
+    want: {
+        "Name": "vnic0",
+
+        "Cdn":
+          {
+            "ClassId": "vnic.Cdn",
+            "ObjectType": "vnic.Cdn",
+            "Source": "vnic",
+            "Value": "vnic0",
+          },
+        "EthAdapterPolicy":
+          {
+            "Moid": "{{ eth_adapter_resp.api_response.Moid }}",
+            "ObjectType": "vnic.EthAdapterPolicy",
+          },
+        "EthNetworkPolicy": null,
+        "EthQosPolicy":
+          {
+            "Moid": "{{ eth_qos_resp.api_response.Moid }}",
+            "ObjectType": "vnic.EthQosPolicy",
+          },
+        "FabricEthNetworkControlPolicy":
+          {
+            "Moid": "{{ eth_net_control_resp.api_response.Moid }}",
+            "ObjectType": "fabric.EthNetworkControlPolicy",
+          },
+        "FabricEthNetworkGroupPolicy":
+          [
+            {
+              "Moid": "{{ eth_net_group_resp.api_response.Moid }}",
+              "ObjectType": "fabric.EthNetworkGroupPolicy",
+            },
+          ],
+        "FailoverEnabled": true,
+        # "IscsiBootPolicy": null,
+        # "IscsiIpV4AddressAllocationType": "None",
+        # "IscsiIpV4Config": {
+        #   "ClassId": "ippool.IpV4Config",
+        #   "Gateway": "",
+        #   "Netmask": "",
+        #   "ObjectType": "ippool.IpV4Config",
+        #   "PrimaryDns": "",
+        #   "SecondaryDns": ""
+        # },
+        # "IscsiIpV6AddressAllocationType": "None",
+        # "IscsiIpV6Config": {
+        #   "ClassId": "ippool.IpV6Config",
+        #   "Gateway": "",
+        #   "ObjectType": "ippool.IpV6Config",
+        #   "Prefix": 0,
+        #   "PrimaryDns": "",
+        #   "SecondaryDns": ""
+        # },
+        # "IscsiIpv4Address": "",
+        # "IscsiIpv6Address": "",
+        "LanConnectivityPolicy":
+          {
+            "Moid": "{{ lan_connectivity_policy_moid }}",
+            "ObjectType": "vnic.LanConnectivityPolicy",
+          },
+        # "LcpVnic": null,
+        # "MacAddress": "",
+        "MacAddressType": "POOL",
+        # "MacLease": null,
+        "MacPool":
+          {
+            "Moid": "{{ mac_resp.api_response.Moid }}",
+            "ObjectType": "macpool.Pool",
+          },
+
+        "Order": 0,
+        # "OverriddenList": [],
+        "PinGroupName": "",
+        "Placement":
+          {
+            "AutoPciLink": true,
+            "AutoSlotId": true,
+            "ClassId": "vnic.PlacementSettings",
+            "Id": "",
+            "ObjectType": "vnic.PlacementSettings",
+            "PciLink": 0,
+            "PciLinkAssignmentMode": "Custom",
+            "SwitchId": "A",
+            "Uplink": 0,
+          },
+        # "Profile": null,
+        # "SpVnics": [],
+        # "SrcTemplate": null,
+        # "SriovSettings": {
+        #   "ClassId": "vnic.SriovSettings",
+        #   "CompCountPerVf": 5,
+        #   "Enabled": false,
+        #   "IntCountPerVf": 8,
+        #   "ObjectType": "vnic.SriovSettings",
+        #   "RxCountPerVf": 4,
+        #   "TxCountPerVf": 1,
+        #   "VfCount": 64
+        # },
+        "StandbyVifId": 0,
+        # "StaticMacAddress": "",
+        # "Tags": [],
+        # "TemplateActions": [],
+        # "TemplateSyncErrors": [],
+        # "TemplateSyncStatus": "None",
+        # "UsnicSettings": {
+        #   "ClassId": "vnic.UsnicSettings",
+        #   "Cos": 5,
+        #   "Count": 0,
+        #   "ObjectType": "vnic.UsnicSettings",
+        #   "UsnicAdapterPolicy": ""
+        # },
+        "VifId": 0,
+        # "VmqSettings": {
+        #   "ClassId": "vnic.VmqSettings",
+        #   "Enabled": false,
+        #   "MultiQueueSupport": false,
+        #   "NumInterrupts": 16,
+        #   "NumSubVnics": 64,
+        #   "NumVmqs": 4,
+        #   "ObjectType": "vnic.VmqSettings",
+        #   "VmmqAdapterPolicy": ""
+        # }
+      }

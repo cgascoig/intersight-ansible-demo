@@ -1,0 +1,762 @@
+- name: Deploy Server Profiles
+  connection: local
+  gather_facts: false
+  hosts: localhost
+  vars:
+    org_name: default
+    name_prefix: AnsibleDemo
+    tags: &tags
+      - Key: Customer
+        Value: CustomerA
+      - Key: Automation
+        Value: Ansible
+  tasks:
+    - name: Configure NTP policy
+      cisco.intersight.intersight_ntp_policy:
+        organization: "{{ org_name }}"
+        name: "{{ name_prefix }}-ntp-pol"
+        description: NTP policy for lab use
+        tags: *tags
+        ntp_servers:
+          - ntp.esl.cisco.com
+        timezone: Australia/Sydney
+    - name: Configure IP Pool with block level config
+      cisco.intersight.intersight_ip_pool:
+        organization: "{{ org_name }}"
+        name: "{{ name_prefix }}-lab-ip-pool"
+        description: IP Pool for lab use
+        enable_block_level_subnet_config: true
+        ipv4_blocks:
+          - from: "172.17.116.32"
+            size: 16
+            ipv4_config:
+              netmask: "255.255.255.0"
+              gateway: "172.17.116.1"
+              primary_dns: "172.17.116.2"
+              secondary_dns: "172.17.116.3"
+          - from: "172.17.117.32"
+            size: 16
+            ipv4_config:
+              netmask: "255.255.255.0"
+              gateway: "172.17.117.1"
+              primary_dns: "172.17.117.2"
+              secondary_dns: "172.17.117.3"
+        ipv6_blocks:
+          - from: "2001:db8::2"
+            size: 64
+            ipv6_config:
+              prefix: 64
+              gateway: "2001:db8::1"
+              primary_dns: "2001:4860:4860::8888"
+              secondary_dns: "2001:4860:4860::8844"
+          - from: "fd12:3456:789a::1"
+            size: 64
+            ipv6_config:
+              prefix: 64
+              gateway: "fd12:3456:789a::1"
+              primary_dns: "2606:4700:4700::1111"
+              secondary_dns: "2606:4700:4700::1001"
+        tags: *tags
+
+    - name: Configure IMC Access Policy
+      cisco.intersight.intersight_imc_access_policy:
+        organization: "{{ org_name }}"
+        name: "{{ name_prefix }}-imc-access-pol"
+        description: IMC policy for lab use
+        tags: *tags
+        out_of_band: true
+        ip_pool: "{{ name_prefix }}-lab-ip-pool"
+
+    - name: Configure Boot Order Policy
+      cisco.intersight.intersight_boot_order_policy:
+        organization: "{{ org_name }}"
+        name: "{{ name_prefix }}-boot-order-pol"
+        description: Boot Order policy
+        tags: *tags
+        configured_boot_mode: Uefi
+        uefi_enable_secure_boot: true
+        boot_devices:
+          - device_type: Local Disk
+            device_name: Boot-Lun1
+            controller_slot: MRAID
+
+    - name: Configure Local User policy
+      cisco.intersight.intersight_local_user_policy:
+        organization: "{{ org_name }}"
+        name: "{{ name_prefix }}-local_user-pol"
+        tags: *tags
+        description: User named guest with admin role
+        enforce_strong_password: false
+        password_history: 0
+        local_users:
+          - username: guest
+            role: admin
+            password: Cisco123!!
+
+    ##############################################################################
+    ##############################################################################
+    ##############################################################################
+    - name: "Get Organization Moid"
+      cisco.intersight.intersight_rest_api:
+        resource_path: /organization/Organizations
+        query_params:
+          $filter: "Name eq '{{ org_name }}'"
+      register: org_resp
+    - include_role:
+        name: isapi
+      vars:
+        display_name: Syslog Policy
+        api_resource_path: "/syslog/Policies"
+        api_query_filter: "Name eq '{{ name_prefix }}-syslog-pol'"
+        want:
+          {
+            "Organization":
+              {
+                "ObjectType": "organization.Organization",
+                "Moid": "{{ org_resp.api_response.Moid }}",
+              },
+            "Name": "{{ name_prefix }}-syslog-pol",
+            "LocalClients":
+              [
+                {
+                  "ObjectType": "syslog.LocalFileLoggingClient",
+                  "MinSeverity": "warning",
+                },
+              ],
+            "RemoteClients":
+              [
+                {
+                  "Enabled": false,
+                  "ObjectType": "syslog.RemoteLoggingClient",
+                  "Hostname": "1.1.1.2",
+                  "Port": 514,
+                  "Protocol": "udp",
+                  "MinSeverity": "warning",
+                },
+                {
+                  "Enabled": false,
+                  "ObjectType": "syslog.RemoteLoggingClient",
+                  "Hostname": "0.0.0.0",
+                  "Port": 514,
+                  "Protocol": "udp",
+                  "MinSeverity": "warning",
+                },
+              ],
+          }
+
+    - include_role:
+        name: isapi
+      vars:
+        display_name: SNMP Policy
+        api_resource_path: "/snmp/Policies"
+        api_query_filter: "Name eq '{{ name_prefix }}-snmp-pol'"
+        want:
+          {
+            "Organization":
+              {
+                "ObjectType": "organization.Organization",
+                "Moid": "{{ org_resp.api_response.Moid }}",
+              },
+            "Name": "{{ name_prefix }}-snmp-pol",
+            "AccessCommunityString": "cisco123",
+            "CommunityAccess": "Disabled",
+            "Enabled": true,
+            "V2Enabled": true,
+            "V3Enabled": true,
+            "SysContact": "Greg",
+            "SysLocation": "Cloud",
+          }
+
+    - include_role:
+        name: isapi
+      vars:
+        display_name: KVM Policy
+        api_resource_path: "/kvm/Policies"
+        api_query_filter: "Name eq '{{ name_prefix }}-kvm-pol'"
+        want:
+          {
+            "Organization":
+              {
+                "ObjectType": "organization.Organization",
+                "Moid": "{{ org_resp.api_response.Moid }}",
+              },
+            "Name": "{{ name_prefix }}-kvm-pol",
+            "EnableLocalServerVideo": true,
+            "EnableVideoEncryption": true,
+            "Enabled": true,
+            "MaximumSessions": 4,
+            "RemotePort": 2068,
+            "TunneledKvmEnabled": true,
+          }
+    - import_tasks: network.yml
+
+    - include_role:
+        name: isapi
+      vars:
+        display_name: BIOS Policy
+        api_resource_path: "/bios/Policies"
+        api_query_filter: "Name eq '{{ name_prefix }}-bios-pol'"
+        want:
+          {
+            "Organization":
+              {
+                "ObjectType": "organization.Organization",
+                "Moid": "{{ org_resp.api_response.Moid }}",
+              },
+            "Name": "{{ name_prefix }}-bios-pol",
+            "AcpiSratSpFlagEn": "platform-default",
+            "AcsControlGpu1state": "platform-default",
+            "AcsControlGpu2state": "platform-default",
+            "AcsControlGpu3state": "platform-default",
+            "AcsControlGpu4state": "platform-default",
+            "AcsControlGpu5state": "platform-default",
+            "AcsControlGpu6state": "platform-default",
+            "AcsControlGpu7state": "platform-default",
+            "AcsControlGpu8state": "platform-default",
+            "AcsControlSlot11state": "platform-default",
+            "AcsControlSlot12state": "platform-default",
+            "AcsControlSlot13state": "platform-default",
+            "AcsControlSlot14state": "platform-default",
+            "AdaptiveRefreshMgmtLevel": "platform-default",
+            "AdjacentCacheLinePrefetch": "platform-default",
+            "AdvancedMemTest": "platform-default",
+            "AllUsbDevices": "platform-default",
+            "Altitude": "platform-default",
+            "AspmSupport": "platform-default",
+            "AssertNmiOnPerr": "platform-default",
+            "AssertNmiOnSerr": "platform-default",
+            "AutoCcState": "platform-default",
+            "AutonumousCstateEnable": "platform-default",
+            "BaudRate": "platform-default",
+            "BmeDmaMitigation": "platform-default",
+            "BootOptionNumRetry": "platform-default",
+            "BootOptionReCoolDown": "platform-default",
+            "BootOptionRetry": "platform-default",
+            "BootPerformanceMode": "platform-default",
+            "BurstAndPostponedRefresh": "platform-default",
+            "C1autoDemotion": "platform-default",
+            "C1autoUnDemotion": "platform-default",
+            "CbsCmnApbdis": "platform-default",
+            "CbsCmnApbdisDfPstateRs": "platform-default",
+            "CbsCmnCpuAvx512": "platform-default",
+            "CbsCmnCpuCpb": "platform-default",
+            "CbsCmnCpuGenDowncoreCtrl": "platform-default",
+            "CbsCmnCpuGlobalCstateCtrl": "platform-default",
+            "CbsCmnCpuL1streamHwPrefetcher": "platform-default",
+            "CbsCmnCpuL2streamHwPrefetcher": "platform-default",
+            "CbsCmnCpuSevAsidSpaceLimit": "platform-default",
+            "CbsCmnCpuSmee": "platform-default",
+            "CbsCmnCpuStreamingStoresCtrl": "platform-default",
+            "CbsCmnDeterminismSlider": "platform-default",
+            "CbsCmnEdcControlThrottle": "platform-default",
+            "CbsCmnEfficiencyModeEn": "platform-default",
+            "CbsCmnEfficiencyModeEnRs": "platform-default",
+            "CbsCmnFixedSocPstate": "platform-default",
+            "CbsCmnGnbNbIommu": "platform-default",
+            "CbsCmnGnbSmuDfCstates": "platform-default",
+            "CbsCmnGnbSmuDffoRs": "platform-default",
+            "CbsCmnGnbSmuDlwmSupport": "platform-default",
+            "CbsCmnGnbSmucppc": "platform-default",
+            "CbsCmnMemCtrlBankGroupSwapDdr4": "platform-default",
+            "CbsCmnMemCtrllerPwrDnEnDdr": "platform-default",
+            "CbsCmnMemMapBankInterleaveDdr4": "platform-default",
+            "CbsCmnMemSpeedDdr47xx2": "platform-default",
+            "CbsCmnMemSpeedDdr47xx3": "platform-default",
+            "CbsCmnPreferredIo7xx2": "platform-default",
+            "CbsCmnPreferredIo7xx3": "platform-default",
+            "CbsCmncTdpCtl": "platform-default",
+            "CbsCmnxGmiForceLinkWidthRs": "platform-default",
+            "CbsCpuCcdCtrlSsp": "platform-default",
+            "CbsCpuCoreCtrl": "platform-default",
+            "CbsCpuDownCoreCtrlBergamo": "platform-default",
+            "CbsCpuDownCoreCtrlGenoa": "platform-default",
+            "CbsCpuSmtCtrl": "platform-default",
+            "CbsDbgCpuGenCpuWdt": "platform-default",
+            "CbsDbgCpuLapicMode": "platform-default",
+            "CbsDbgCpuSnpMemCover": "platform-default",
+            "CbsDbgCpuSnpMemSizeCover": "platform-default",
+            "CbsDfCmn4linkMaxXgmiSpeed": "platform-default",
+            "CbsDfCmnAcpiSratL3numa": "platform-default",
+            "CbsDfCmnDramNps": "platform-default",
+            "CbsDfCmnDramScrubTime": "platform-default",
+            "CbsDfCmnMemIntlv": "platform-default",
+            "CbsDfCmnMemIntlvControl": "platform-default",
+            "CbsDfCmnMemIntlvSize": "platform-default",
+            "CbsDfDbgXgmiLinkCfg": "platform-default",
+            "CbsGnbDbgPcieTbtSupport": "platform-default",
+            "CbsSevSnpSupport": "platform-default",
+            "CdnEnable": "platform-default",
+            "CdnSupport": "platform-default",
+            "ChannelInterLeave": "platform-default",
+            "CiscoAdaptiveMemTraining": "platform-default",
+            "CiscoDebugLevel": "platform-default",
+            "CiscoOpromLaunchOptimization": "platform-default",
+            "CiscoXgmiMaxSpeed": "platform-default",
+            "CkeLowPolicy": "platform-default",
+            "ClosedLoopThermThrotl": "platform-default",
+            "CmciEnable": "platform-default",
+            "ConfigTdp": "platform-default",
+            "ConfigTdpLevel": "platform-default",
+            "ConsoleRedirection": "platform-default",
+            "CoreMultiProcessing": "platform-default",
+            "CpuEnergyPerformance": "platform-default",
+            "CpuFrequencyFloor": "platform-default",
+            "CpuPaLimit": "platform-default",
+            "CpuPerfEnhancement": "platform-default",
+            "CpuPerformance": "platform-default",
+            "CpuPowerManagement": "platform-default",
+            "CrQos": "platform-default",
+            "CrfastgoConfig": "platform-default",
+            "DcpmmFirmwareDowngrade": "platform-default",
+            "DemandScrub": "platform-default",
+            "DfxOsbEn": "platform-default",
+            "DirectCacheAccess": "platform-default",
+            "DmaCtrlOptIn": "platform-default",
+            "DramClockThrottling": "platform-default",
+            "DramRefreshRate": "platform-default",
+            "DramSwThermalThrottling": "platform-default",
+            "EadrSupport": "platform-default",
+            "EdpcEn": "platform-default",
+            "EnableClockSpreadSpec": "platform-default",
+            "EnableMktme": "platform-default",
+            "EnableRmt": "platform-default",
+            "EnableSgx": "platform-default",
+            "EnableTdx": "platform-default",
+            "EnableTdxSeamldr": "platform-default",
+            "EnableTme": "platform-default",
+            "EnergyEfficientTurbo": "platform-default",
+            "EngPerfTuning": "platform-default",
+            "EnhancedIntelSpeedStepTech": "platform-default",
+            "EpochUpdate": "platform-default",
+            "EppEnable": "platform-default",
+            "EppProfile": "platform-default",
+            "ErrorCheckScrub": "platform-default",
+            "ExecuteDisableBit": "platform-default",
+            "ExtendedApic": "platform-default",
+            "FlowControl": "platform-default",
+            "Frb2enable": "platform-default",
+            "HardwarePrefetch": "platform-default",
+            "HwpmEnable": "platform-default",
+            "ImcInterleave": "platform-default",
+            "IntelDynamicSpeedSelect": "platform-default",
+            "IntelHyperThreadingTech": "platform-default",
+            "IntelSpeedSelect": "platform-default",
+            "IntelTurboBoostTech": "platform-default",
+            "IntelVirtualizationTechnology": "platform-default",
+            "IntelVtForDirectedIo": "platform-default",
+            "IntelVtdCoherencySupport": "platform-default",
+            "IntelVtdInterruptRemapping": "platform-default",
+            "IntelVtdPassThroughDmaSupport": "platform-default",
+            "IntelVtdatsSupport": "platform-default",
+            "IoatConfigCpm": "platform-default",
+            "IohErrorEnable": "platform-default",
+            "IohResource": "platform-default",
+            "IpPrefetch": "platform-default",
+            "Ipv4http": "platform-default",
+            "Ipv4pxe": "platform-default",
+            "Ipv6http": "platform-default",
+            "Ipv6pxe": "platform-default",
+            "KtiPrefetch": "enabled",
+            "LatencyOptimizedMode": "platform-default",
+            "LegacyOsRedirection": "platform-default",
+            "LegacyUsbSupport": "platform-default",
+            "LlcAlloc": "disabled",
+            "LlcPrefetch": "disabled",
+            "LomPort0state": "platform-default",
+            "LomPort1state": "platform-default",
+            "LomPort2state": "platform-default",
+            "LomPort3state": "platform-default",
+            "LomPortsAllState": "platform-default",
+            "LvDdrMode": "platform-default",
+            "MakeDeviceNonBootable": "platform-default",
+            "MemoryBandwidthBoost": "platform-default",
+            "MemoryInterLeave": "platform-default",
+            "MemoryMappedIoAbove4gb": "platform-default",
+            "MemoryRefreshRate": "platform-default",
+            "MemorySizeLimit": "platform-default",
+            "MemoryThermalThrottling": "platform-default",
+            "MirroringMode": "platform-default",
+            "MmcfgBase": "platform-default",
+            "MmiohBase": "platform-default",
+            "MmiohSize": "platform-default",
+            "NetworkStack": "platform-default",
+            "NumaOptimized": "platform-default",
+            "NvmdimmPerformConfig": "platform-default",
+            "Onboard10gbitLom": "platform-default",
+            "OnboardGbitLom": "platform-default",
+            "OnboardScuStorageSupport": "platform-default",
+            "OnboardScuStorageSwStack": "platform-default",
+            "OperationMode": "platform-default",
+            "OptimizedPowerMode": "platform-default",
+            "OsBootWatchdogTimer": "platform-default",
+            "OsBootWatchdogTimerPolicy": "platform-default",
+            "OsBootWatchdogTimerTimeout": "platform-default",
+            "OutOfBandMgmtPort": "platform-default",
+            "PackageCstateLimit": "platform-default",
+            "PanicHighWatermark": "platform-default",
+            "PartialCacheLineSparing": "platform-default",
+            "PartialMirrorModeConfig": "platform-default",
+            "PartialMirrorPercent": "platform-default",
+            "PartialMirrorValue1": "platform-default",
+            "PartialMirrorValue2": "platform-default",
+            "PartialMirrorValue3": "platform-default",
+            "PartialMirrorValue4": "platform-default",
+            "PatrolScrub": "disabled",
+            "PatrolScrubDuration": "platform-default",
+            "PcIeRasSupport": "platform-default",
+            "PcIeSsdHotPlugSupport": "platform-default",
+            "PchPciePllSsc": "platform-default",
+            "PchUsb30mode": "platform-default",
+            "PciOptionRoMs": "platform-default",
+            "PciRomClp": "platform-default",
+            "PcieAriSupport": "platform-default",
+            "PciePllSsc": "platform-default",
+            "PcieSlotMraid1linkSpeed": "platform-default",
+            "PcieSlotMraid1optionRom": "platform-default",
+            "PcieSlotMraid2linkSpeed": "platform-default",
+            "PcieSlotMraid2optionRom": "platform-default",
+            "PcieSlotMstorraidLinkSpeed": "platform-default",
+            "PcieSlotMstorraidOptionRom": "platform-default",
+            "PcieSlotNvme1linkSpeed": "platform-default",
+            "PcieSlotNvme1optionRom": "platform-default",
+            "PcieSlotNvme2linkSpeed": "platform-default",
+            "PcieSlotNvme2optionRom": "platform-default",
+            "PcieSlotNvme3linkSpeed": "platform-default",
+            "PcieSlotNvme3optionRom": "platform-default",
+            "PcieSlotNvme4linkSpeed": "platform-default",
+            "PcieSlotNvme4optionRom": "platform-default",
+            "PcieSlotNvme5linkSpeed": "platform-default",
+            "PcieSlotNvme5optionRom": "platform-default",
+            "PcieSlotNvme6linkSpeed": "platform-default",
+            "PcieSlotNvme6optionRom": "platform-default",
+            "PcieSlotsCdnEnable": "platform-default",
+            "PopSupport": "platform-default",
+            "PostErrorPause": "platform-default",
+            "PostPackageRepair": "platform-default",
+            "PreBootDmaProtection": "platform-default",
+            "PrmrrSize": "platform-default",
+            "ProcessorC1e": "platform-default",
+            "ProcessorC3report": "platform-default",
+            "ProcessorC6report": "enabled",
+            "ProcessorCstate": "platform-default",
+            "Psata": "platform-default",
+            "PstateCoordType": "platform-default",
+            "PuttyKeyPad": "platform-default",
+            "PwrPerfTuning": "platform-default",
+            "QpiLinkFrequency": "platform-default",
+            "QpiLinkSpeed": "platform-default",
+            "QpiSnoopMode": "platform-default",
+            "RankInterLeave": "platform-default",
+            "RedirectionAfterPost": "platform-default",
+            "ResizeBarSupport": "platform-default",
+            "RuntimePostPackageRepair": "platform-default",
+            "SataModeSelect": "platform-default",
+            "SelectMemoryRasConfiguration": "maximum-performance",
+            "SelectPprType": "platform-default",
+            "SerialMux": "platform-default",
+            "SerialPortAenable": "platform-default",
+            "Sev": "platform-default",
+            "SgxAutoRegistrationAgent": "platform-default",
+            "SgxEpoch0": "platform-default",
+            "SgxEpoch1": "platform-default",
+            "SgxFactoryReset": "platform-default",
+            "SgxLePubKeyHash0": "platform-default",
+            "SgxLePubKeyHash1": "platform-default",
+            "SgxLePubKeyHash2": "platform-default",
+            "SgxLePubKeyHash3": "platform-default",
+            "SgxLeWr": "platform-default",
+            "SgxPackageInfoInBandAccess": "platform-default",
+            "SgxQos": "platform-default",
+            "Sha1pcrBank": "platform-default",
+            "Sha256pcrBank": "platform-default",
+            "Sha384pcrBank": "platform-default",
+            "SinglePctlEnable": "platform-default",
+            "Slot10linkSpeed": "platform-default",
+            "Slot10state": "platform-default",
+            "Slot11linkSpeed": "platform-default",
+            "Slot11state": "platform-default",
+            "Slot12linkSpeed": "platform-default",
+            "Slot12state": "platform-default",
+            "Slot13state": "platform-default",
+            "Slot14state": "platform-default",
+            "Slot1linkSpeed": "platform-default",
+            "Slot1state": "platform-default",
+            "Slot2linkSpeed": "platform-default",
+            "Slot2state": "platform-default",
+            "Slot3linkSpeed": "platform-default",
+            "Slot3state": "platform-default",
+            "Slot4linkSpeed": "platform-default",
+            "Slot4state": "platform-default",
+            "Slot5linkSpeed": "platform-default",
+            "Slot5state": "platform-default",
+            "Slot6linkSpeed": "platform-default",
+            "Slot6state": "platform-default",
+            "Slot7linkSpeed": "platform-default",
+            "Slot7state": "platform-default",
+            "Slot8linkSpeed": "platform-default",
+            "Slot8state": "platform-default",
+            "Slot9linkSpeed": "platform-default",
+            "Slot9state": "platform-default",
+            "SlotFlomLinkSpeed": "platform-default",
+            "SlotFrontNvme10linkSpeed": "platform-default",
+            "SlotFrontNvme10optionRom": "platform-default",
+            "SlotFrontNvme11linkSpeed": "platform-default",
+            "SlotFrontNvme11optionRom": "platform-default",
+            "SlotFrontNvme12linkSpeed": "platform-default",
+            "SlotFrontNvme12optionRom": "platform-default",
+            "SlotFrontNvme13linkSpeed": "platform-default",
+            "SlotFrontNvme13optionRom": "platform-default",
+            "SlotFrontNvme14linkSpeed": "platform-default",
+            "SlotFrontNvme14optionRom": "platform-default",
+            "SlotFrontNvme15linkSpeed": "platform-default",
+            "SlotFrontNvme15optionRom": "platform-default",
+            "SlotFrontNvme16linkSpeed": "platform-default",
+            "SlotFrontNvme16optionRom": "platform-default",
+            "SlotFrontNvme17linkSpeed": "platform-default",
+            "SlotFrontNvme17optionRom": "platform-default",
+            "SlotFrontNvme18linkSpeed": "platform-default",
+            "SlotFrontNvme18optionRom": "platform-default",
+            "SlotFrontNvme19linkSpeed": "platform-default",
+            "SlotFrontNvme19optionRom": "platform-default",
+            "SlotFrontNvme1linkSpeed": "platform-default",
+            "SlotFrontNvme1optionRom": "platform-default",
+            "SlotFrontNvme20linkSpeed": "platform-default",
+            "SlotFrontNvme20optionRom": "platform-default",
+            "SlotFrontNvme21linkSpeed": "platform-default",
+            "SlotFrontNvme21optionRom": "platform-default",
+            "SlotFrontNvme22linkSpeed": "platform-default",
+            "SlotFrontNvme22optionRom": "platform-default",
+            "SlotFrontNvme23linkSpeed": "platform-default",
+            "SlotFrontNvme23optionRom": "platform-default",
+            "SlotFrontNvme24linkSpeed": "platform-default",
+            "SlotFrontNvme24optionRom": "platform-default",
+            "SlotFrontNvme25linkSpeed": "platform-default",
+            "SlotFrontNvme25optionRom": "platform-default",
+            "SlotFrontNvme26linkSpeed": "platform-default",
+            "SlotFrontNvme26optionRom": "platform-default",
+            "SlotFrontNvme27linkSpeed": "platform-default",
+            "SlotFrontNvme27optionRom": "platform-default",
+            "SlotFrontNvme28linkSpeed": "platform-default",
+            "SlotFrontNvme28optionRom": "platform-default",
+            "SlotFrontNvme29linkSpeed": "platform-default",
+            "SlotFrontNvme29optionRom": "platform-default",
+            "SlotFrontNvme2linkSpeed": "platform-default",
+            "SlotFrontNvme2optionRom": "platform-default",
+            "SlotFrontNvme30linkSpeed": "platform-default",
+            "SlotFrontNvme30optionRom": "platform-default",
+            "SlotFrontNvme31linkSpeed": "platform-default",
+            "SlotFrontNvme31optionRom": "platform-default",
+            "SlotFrontNvme32linkSpeed": "platform-default",
+            "SlotFrontNvme32optionRom": "platform-default",
+            "SlotFrontNvme3linkSpeed": "platform-default",
+            "SlotFrontNvme3optionRom": "platform-default",
+            "SlotFrontNvme4linkSpeed": "platform-default",
+            "SlotFrontNvme4optionRom": "platform-default",
+            "SlotFrontNvme5linkSpeed": "platform-default",
+            "SlotFrontNvme5optionRom": "platform-default",
+            "SlotFrontNvme6linkSpeed": "platform-default",
+            "SlotFrontNvme6optionRom": "platform-default",
+            "SlotFrontNvme7linkSpeed": "platform-default",
+            "SlotFrontNvme7optionRom": "platform-default",
+            "SlotFrontNvme8linkSpeed": "platform-default",
+            "SlotFrontNvme8optionRom": "platform-default",
+            "SlotFrontNvme9linkSpeed": "platform-default",
+            "SlotFrontNvme9optionRom": "platform-default",
+            "SlotFrontSlot5linkSpeed": "platform-default",
+            "SlotFrontSlot6linkSpeed": "platform-default",
+            "SlotGpu1state": "platform-default",
+            "SlotGpu2state": "platform-default",
+            "SlotGpu3state": "platform-default",
+            "SlotGpu4state": "platform-default",
+            "SlotGpu5state": "platform-default",
+            "SlotGpu6state": "platform-default",
+            "SlotGpu7state": "platform-default",
+            "SlotGpu8state": "platform-default",
+            "SlotHbaLinkSpeed": "platform-default",
+            "SlotHbaState": "platform-default",
+            "SlotLom1link": "platform-default",
+            "SlotLom2link": "platform-default",
+            "SlotMezzState": "platform-default",
+            "SlotMlomLinkSpeed": "platform-default",
+            "SlotMlomState": "platform-default",
+            "SlotMraidLinkSpeed": "platform-default",
+            "SlotMraidState": "platform-default",
+            "SlotN10state": "platform-default",
+            "SlotN11state": "platform-default",
+            "SlotN12state": "platform-default",
+            "SlotN13state": "platform-default",
+            "SlotN14state": "platform-default",
+            "SlotN15state": "platform-default",
+            "SlotN16state": "platform-default",
+            "SlotN17state": "platform-default",
+            "SlotN18state": "platform-default",
+            "SlotN19state": "platform-default",
+            "SlotN1state": "platform-default",
+            "SlotN20state": "platform-default",
+            "SlotN21state": "platform-default",
+            "SlotN22state": "platform-default",
+            "SlotN23state": "platform-default",
+            "SlotN24state": "platform-default",
+            "SlotN2state": "platform-default",
+            "SlotN3state": "platform-default",
+            "SlotN4state": "platform-default",
+            "SlotN5state": "platform-default",
+            "SlotN6state": "platform-default",
+            "SlotN7state": "platform-default",
+            "SlotN8state": "platform-default",
+            "SlotN9state": "platform-default",
+            "SlotRaidLinkSpeed": "platform-default",
+            "SlotRaidState": "platform-default",
+            "SlotRearNvme1linkSpeed": "platform-default",
+            "SlotRearNvme1state": "platform-default",
+            "SlotRearNvme2linkSpeed": "platform-default",
+            "SlotRearNvme2state": "platform-default",
+            "SlotRearNvme3linkSpeed": "platform-default",
+            "SlotRearNvme3state": "platform-default",
+            "SlotRearNvme4linkSpeed": "platform-default",
+            "SlotRearNvme4state": "platform-default",
+            "SlotRearNvme5state": "platform-default",
+            "SlotRearNvme6state": "platform-default",
+            "SlotRearNvme7state": "platform-default",
+            "SlotRearNvme8state": "platform-default",
+            "SlotRiser1linkSpeed": "platform-default",
+            "SlotRiser1slot1linkSpeed": "platform-default",
+            "SlotRiser1slot2linkSpeed": "platform-default",
+            "SlotRiser1slot3linkSpeed": "platform-default",
+            "SlotRiser2linkSpeed": "platform-default",
+            "SlotRiser2slot4linkSpeed": "platform-default",
+            "SlotRiser2slot5linkSpeed": "platform-default",
+            "SlotRiser2slot6linkSpeed": "platform-default",
+            "SlotSasState": "platform-default",
+            "SlotSsdSlot1linkSpeed": "platform-default",
+            "SlotSsdSlot2linkSpeed": "platform-default",
+            "Smee": "platform-default",
+            "SmtMode": "platform-default",
+            "Snc": "SNC4",
+            "SnoopyModeFor2lm": "platform-default",
+            "SnoopyModeForAd": "platform-default",
+            "SparingMode": "platform-default",
+            "SrIov": "platform-default",
+            "StreamerPrefetch": "platform-default",
+            "SvmMode": "platform-default",
+            "TerminalType": "platform-default",
+            "TpmControl": "enabled",
+            "TpmPendingOperation": "None",
+            "TpmPpiRequired": "enabled",
+            "TpmSupport": "enabled",
+            "Tsme": "platform-default",
+            "TxtSupport": "platform-default",
+            "UcsmBootOrderRule": "platform-default",
+            "UefiMemMapSpFlagEn": "platform-default",
+            "UfsDisable": "platform-default",
+            "UmaBasedClustering": "platform-default",
+            "UpiLinkEnablement": "2",
+            "UpiPowerManagement": "enabled",
+            "UsbEmul6064": "platform-default",
+            "UsbPortFront": "platform-default",
+            "UsbPortInternal": "platform-default",
+            "UsbPortKvm": "platform-default",
+            "UsbPortRear": "platform-default",
+            "UsbPortSdCard": "platform-default",
+            "UsbPortVmedia": "platform-default",
+            "UsbXhciSupport": "platform-default",
+            "VgaPriority": "platform-default",
+            "VirtualNuma": "platform-default",
+            "VmdEnable": "platform-default",
+            "VolMemoryMode": "platform-default",
+            "WorkLoadConfig": "platform-default",
+            "X2apicOptOut": "platform-default",
+            "XptPrefetch": "enabled",
+            "XptRemotePrefetch": "platform-default",
+          }
+
+    - include_role:
+        name: isapi
+      vars:
+        display_name: IMC Certificate Policy
+        api_resource_path: "/certificatemanagement/Policies"
+        api_query_filter: "Name eq '{{ name_prefix }}-certificate-pol'"
+        want:
+          {
+            "Organization":
+              {
+                "ObjectType": "organization.Organization",
+                "Moid": "{{ org_resp.api_response.Moid }}",
+              },
+            "Name": "{{ name_prefix }}-certificate-pol",
+            "Certificates":
+              [
+                {
+                  "Certificate":
+                    {
+                      "PemCertificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURlekNDQW1PZ0F3SUJBZ0lVQmFqLy9JSDQ5WkxBVTdnbEgxalYrUHN5SVFnd0RRWUpLb1pJaHZjTkFRRUwKQlFBd1pqRUxNQWtHQTFVRUJoTUNRVlV4RVRBUEJnTlZCQWdNQ0ZacFkzUnZjbWxoTVJJd0VBWURWUVFIREFsTgpaV3hpYjNWeWJtVXhEakFNQmdOVkJBb01CVU5wYzJOdk1SQXdEZ1lEVlFRTERBZERRVWtnYkdGaU1RNHdEQVlEClZRUUREQVZsYzNnd01UQWVGdzB5TlRBM01EY3dNakV5TVRWYUZ3MHpOakEyTVRrd01qRXlNVFZhTUdZeEN6QUoKQmdOVkJBWVRBa0ZWTVJFd0R3WURWUVFJREFoV2FXTjBiM0pwWVRFU01CQUdBMVVFQnd3SlRXVnNZbTkxY201bApNUTR3REFZRFZRUUtEQVZEYVhOamJ6RVFNQTRHQTFVRUN3d0hRMEZKSUd4aFlqRU9NQXdHQTFVRUF3d0ZaWE40Ck1ERXdnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCRHdBd2dnRUtBb0lCQVFEV0VSblhkNk92SkJ1dGpmQlkKSktwTkRVd2c4Q3hWMXhBRHZkVDFONWNwb0Y2MzhWRys0STdaODJJWW9Qa1pwR3BqSmxheTRSQXB4UmxYUTN0cApvOElweVA5TzJWd3poMDJNQlc0YXhEMlhZU0FFYS9ldWNHMXhaSUVNM3dHamhZbW83YjdBQ3NnaExZQVgxcEZ0CjE4eFJMeko2VGhyUDNTTDlqb1hvTTdBNGJlWjFRcGRMWG5Wb2dFNGtldWQwTDdWaCt4ZlBNMXFWYjNWdnJLNUMKdld2UzRHdGJrL1Bodm9yQmNoZTVQQ1gvUHljczVkUjZyWDV4L0ZPZzJScndrQlp5aVhKRHp0Y09uQVJhMjBxaQozUFNTbkdMdFRkb1JDb2o3anl5NDNIZHVKV0FLNCtYZ0N3MXk5RzVYZmRKekpOU1dxQ0hwT1dzemhweU5XY2wvCll1ZWpBZ01CQUFHaklUQWZNQjBHQTFVZERnUVdCQlJSVnkzUjBFaHcxUkZWV1Q4K3duYUZ4ai95ZXpBTkJna3EKaGtpRzl3MEJBUXNGQUFPQ0FRRUFXdHZ5MTVZTFlIU1BURml5OG9GNFg5UmdWejlJRGdaQStPQ2VDSVNNVUZhUwplWHM0MUEzZXMzOEdhTDFxY2dtMDU2K09aejdLZVNtdHUvalBKU1Y2WSt3TzFLTmQ0eWlTVTFpb2JXTW0vMWwrClVYMXMvd1pXTzRlcjFHK1g4VWdGTUNVNVRqTUJQbkg4TmRZMkFGdFNKcWJwODdmcldscVhPWVllRUo5dTdGNW4KM1BEUXNGd0pRd0JveUYrZ1lKdVVXcDQ5SXFKaXdvdVdvdUZZTnNiaFU4RjNyR0FlQ0ZMMURuUGNnQWdsb2lEeApWY0tsQ0sxWUl5aVFTcWJrQ2REam1kNGRwTlZQZFVoSXMzTDVoZGljVFd6V3hUMGhrOGR5eTkzSHpiK1dSYlRWCjA1STVyelNVWFhaM2NMVENZMURqTURlejd2b3E2WHY1dkFRVEdwbEFHZz09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K",
+                    },
+                  "ObjectType": "certificatemanagement.Imc",
+                  "Enabled": true,
+                  "Privatekey": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2d0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktrd2dnU2xBZ0VBQW9JQkFRRFdFUm5YZDZPdkpCdXQKamZCWUpLcE5EVXdnOEN4VjF4QUR2ZFQxTjVjcG9GNjM4VkcrNEk3WjgySVlvUGtacEdwakpsYXk0UkFweFJsWApRM3RwbzhJcHlQOU8yVnd6aDAyTUJXNGF4RDJYWVNBRWEvZXVjRzF4WklFTTN3R2poWW1vN2I3QUNzZ2hMWUFYCjFwRnQxOHhSTHpKNlRoclAzU0w5am9Yb003QTRiZVoxUXBkTFhuVm9nRTRrZXVkMEw3VmgreGZQTTFxVmIzVnYKcks1Q3ZXdlM0R3Riay9QaHZvckJjaGU1UENYL1B5Y3M1ZFI2clg1eC9GT2cyUnJ3a0JaeWlYSkR6dGNPbkFSYQoyMHFpM1BTU25HTHRUZG9SQ29qN2p5eTQzSGR1SldBSzQrWGdDdzF5OUc1WGZkSnpKTlNXcUNIcE9Xc3pocHlOCldjbC9ZdWVqQWdNQkFBRUNnZ0VBRVFtdkVsdGgzNTg5UldJdU5uM0RRT1c2NFBEc3ZtK2pHb0VoOFlYWlZnVlUKZEo4cGxVcC9PWWFwdTBjWXB5WDl3bUxRbjJVb0ZGaFgxMzVncWhHbGN3NUlqOGlLRWtuYkdMYkNtREVnQVN2eQorMEhIL0E0cEQ4K05ocGpsK0ZOandscHdobUxLb2ZxMzlCaHVYbktXRkZkd0tqN2hoY09CTlBMWDRwbUw2dVJqCkhOSldBTjNUckRka0lGdm1ZSUxlTXl4YmhIV2dqUXhGS1NXNmkrWnFQMTV3SUdTQWc5NlQzZmgyVEtTNW5CalQKa0JqQmlicFFJcFZ2UXNRL21mQVRiZXFKd2VPeGhHalYzdEpCSG1CbjVPS2FKTlgxcktNbm1hMVkxemtmLzhwVAozeFhTSFJlMGZYSGUyeis5NXhNTjFaOWp2OTl0bjE0SDkrM2Fyd2huR1FLQmdRRHh4SUNUZ0t1WkpvSXNvYy9PCnFaWmFHc3EzNUpHRGFHazhzRmJaOUdJZGtaZnBoVmhsQVo4YVNlaWF1ellHL2tQY3d3S3NyZUJYNjVDN3FKREUKT0doNjc0SktqeGxvdGhvYWE0SFlBdE0yMUFSNXMvQk9Hd25TWWM1NEF5bEowR0tyWkJJZWsreC9uN0pjUXRWWgpOS2xiQUF6RnRqTVJKUDUvVkRjSjVVQ2Y2d0tCZ1FEaXF5UVU1TTcwcWZRYUpRU0h2c1J4N1BiT0JqVUFQdWZkCllFU2dSdUhlN29jKzVQTWwxSFpTRmM1bHFySTFvenFpZEpwNi9RTDZ5UDNPSUQxczRxZnBuS29xLzJoN0pGUUgKUUdFcUJoNldETzQ0eGxJeFc1eDN0UHhOWTNpWnc2SUZGQ1hsblpUcEFWRU9zbFZUNVhzdFFUKzRtY1Q2Mk5EMgpZVGQrcTBRaEtRS0JnUUNUSnNnZmZ6UnluZWFqWmNXSEF0OTViazh1aUZjdEJWTHdWbUEyZnJGdFQ5MkhpOXJXCmQ1c3dOQVg0ajdQOW82c0laa1Z0ZHROU2tCVmlzdUdTSE1jeTlDNTRWUXJoR2QxZmNVbnhnUjZ2ZzNKSjVRU0IKZGFHUHhHb1h6OHpFbWFwRXFUOENENFRsMVB5SmZVQS84SGFYNWJyZ1o5cERPQ0lTdTk1WURvbzhDd0tCZ1FDMAo1b0ZWYTRjQUhPT0VPaWJ6YjN5NHI3WUpsMHFWZDU3MVB1K0dPd3ZwTDlVZ2pQakJLRitHQTRGR0FvVlg2WDNTClNkMUFhczBGK1lNV0R3VDI4YTJ3OUNlYlNWdkphNlRrWkswbkxOc2NSaFdabWkzZTFvNTV1eWZoVzVIVXBoMlkKa0F2dXhXVWkwTG93VUlOcEFhemM0VVpKdmU5SGcrTEJ2N1Rha3pVOGdRS0JnUUN6M2kyTFF6eVphd2RTQURHTQpCbDQ0cnNzMTVxUmNlbldsN29Sdzlwa1Uza1Aza095MFUwaHF1Mkh4b2FndkpWS1lnWElkd1pMeTF6WW04eHFPClBIcy9BK2kyVkpISldsV0hMcGJNL1J6UFBsNmdickpCdjBNckZBd1FZaGdHbDJNZ1pGWlVKblI1cFVXV1FwRmsKUlVnQ0VSMUdBWkxDdGR4aFE3RXhtY2FCQUE9PQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==",
+                  "IsPrivatekeySet": true,
+                },
+              ],
+            "Tags": [],
+          }
+
+    - include_role:
+        name: isapi
+      vars:
+        display_name: Storage Policy
+        api_resource_path: "/storage/StoragePolicies"
+        api_query_filter: "Name eq '{{ name_prefix }}-storage-pol'"
+        want:
+          {
+            "Organization":
+              {
+                "ObjectType": "organization.Organization",
+                "Moid": "{{ org_resp.api_response.Moid }}",
+              },
+            "Name": "{{ name_prefix }}-storage-pol",
+
+            "ControllerAttachedNvmeSlots": "",
+            "DefaultDriveMode": "UnconfiguredGood",
+            "DirectAttachedNvmeSlots": "",
+            "DriveGroup": [],
+            "GlobalHotSpares": "",
+            "M2VirtualDrive":
+              {
+                "ClassId": "storage.M2VirtualDriveConfig",
+                "ControllerSlot": "MSTOR-RAID-1",
+                "Enable": true,
+                "Name": "M2Boot",
+                "ObjectType": "storage.M2VirtualDriveConfig",
+              },
+            "Raid0Drive":
+              {
+                "ClassId": "storage.R0Drive",
+                "DriveSlots": "",
+                "DriveSlotsList": "",
+                "Enable": false,
+                "ObjectType": "storage.R0Drive",
+                "VirtualDrivePolicy":
+                  {
+                    "AccessPolicy": "Default",
+                    "ClassId": "storage.VirtualDrivePolicy",
+                    "DriveCache": "Default",
+                    "ObjectType": "storage.VirtualDrivePolicy",
+                    "ReadPolicy": "Default",
+                    "StripSize": 64,
+                    "WritePolicy": "Default",
+                  },
+              },
+            "RaidAttachedNvmeSlots": "",
+            "SecureJbods": "",
+            "UnusedDisksState": "NoChange",
+            "UseJbodForVdCreation": false,
+          }
+    ##############################################################################
+    ##############################################################################
+    ##############################################################################
+
+    - name: Deploy server with policies
+      include_role:
+        name: isserver
+      vars:
+        server_serial: FCH2712796P

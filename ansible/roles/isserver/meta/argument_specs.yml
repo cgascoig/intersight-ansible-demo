@@ -1,0 +1,37 @@
+---
+argument_specs:
+  main:
+    short_description: Main entry point for the isserver role
+    description:
+      - This is the main entrypoint for the C(isserver) role.
+    author:
+      - Chris Gascoigne
+    options:
+      org_name:
+        type: "str"
+        required: false
+        default: default
+        description:
+          - "Organisation name"
+      name_prefix:
+        type: "str"
+        required: true
+        description:
+          - "prefix for object names"
+      server_serial:
+        type: str
+        required: true
+      tags:
+        type: "list"
+        elements: "dict"
+        required: false
+        default: []
+        description:
+          - "List of tags"
+        options:
+          Key:
+            type: str
+            required: true
+          Value:
+            type: str
+            required: true

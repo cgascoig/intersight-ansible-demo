@@ -1,0 +1,43 @@
+- name: "{{ display_name|default('') }} : Get current object from API"
+  cisco.intersight.intersight_rest_api:
+    resource_path: "{{ api_resource_path }}"
+    query_params:
+      $filter: "{{ api_query_filter }}"
+  register: get_res
+
+- name: "{{ display_name|default('') }} : determining changes ..."
+  ansible.builtin.set_fact:
+    want_paths: "{{ want|ansible.utils.to_paths|ansible.utils.remove_keys(target=['Certificates[0].Privatekey'])}}"
+    res_paths: "{{ get_res.api_response|ansible.utils.to_paths }}"
+
+- name: "{{ display_name|default('') }} : determining changes ..."
+  ansible.builtin.set_fact:
+    want_paths_keys: "{{ want_paths.keys()|list }}"
+- name: "{{ display_name|default('') }} : determining changes ..."
+  ansible.builtin.set_fact:
+    filtered_res_paths: "{{ res_paths|ansible.utils.keep_keys(target=want_paths_keys)}}"
+
+# - ansible.builtin.debug:
+#     msg: "{{ item }} is {{ want_paths[item] == res_paths[item]|ternary('OK', 'NO') }}"
+#   loop: "{{ want_paths.keys()|sort }}"
+
+# - ansible.builtin.debug:
+#     msg: "API state already matches desired state"
+#   when: filtered_res_paths == want_paths
+
+# - ansible.builtin.debug:
+#     msg: "API state does not match desired state"
+#   when: filtered_res_paths != want_paths
+- name: "{{ display_name|default('Certificates[0].PrivateKey') }} : Configure object in API"
+  cisco.intersight.intersight_rest_api:
+    resource_path: "{{ api_resource_path }}"
+    api_body: "{{ want }}"
+  when: filtered_res_paths != want_paths
+  register: post_res
+
+- set_fact:
+    isapi_res: "{{ post_res }}"
+  when: post_res.api_response is defined and post_res.api_response
+- set_fact:
+    isapi_res: "{{ get_res }}"
+  when: post_res.api_response is not defined or not post_res.api_response
