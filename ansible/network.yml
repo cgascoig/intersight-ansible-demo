@@ -1,10 +1,9 @@
-- include_role:
-    name: isapi
-  vars:
-    display_name: LAN Connectivity Policy
-    api_resource_path: "/vnic/LanConnectivityPolicies"
-    api_query_filter: "Name eq '{{ name_prefix }}-lanconnectivity-pol'"
-    want:
+- name: LAN Connectivity Policy
+  cisco.intersight.intersight_rest_api:
+    resource_path: /vnic/LanConnectivityPolicies
+    query_params:
+      $filter: "Name eq '{{ name_prefix }}-lanconnectivity-pol'"
+    api_body:
       {
         "Organization":
           {
@@ -19,10 +18,11 @@
         "StaticIqnName": "",
         "TargetPlatform": "FIAttached",
       }
+  register: lan_connectivity_policy_res
 - debug:
-    msg: "isapi_res: {{ isapi_res }}"
+    msg: "lan_connectivity_policy_res: {{ lan_connectivity_policy_res }}"
 - set_fact:
-    lan_connectivity_policy_moid: "{{ isapi_res.api_response.Moid }}"
+    lan_connectivity_policy_moid: "{{ lan_connectivity_policy_res.api_response.Moid }}"
 
 # Get the Ethernet Network Group Policy
 - name: "Get Ethernet Network Group Policy Moid"
@@ -60,13 +60,12 @@
       $filter: "Name eq 'MEL-MAC'"
   register: mac_resp
 
-- include_role:
-    name: isapi
-  vars:
-    display_name: vNic Ethernet Interface
-    api_resource_path: "/vnic/EthIfs"
-    api_query_filter: "Name eq 'vnic0' and LanConnectivityPolicy.Moid eq '{{ lan_connectivity_policy_moid }}'"
-    want:
+- name: vNic Ethernet Interface
+  cisco.intersight.intersight_rest_api:
+    resource_path: /vnic/EthIfs
+    query_params:
+      $filter: "Name eq 'vnic0' and LanConnectivityPolicy.Moid eq '{{ lan_connectivity_policy_moid }}'"
+    api_body:
       {
         "Name": "vnic0",
 

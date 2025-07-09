@@ -10,6 +10,8 @@
         Value: CustomerA
       - Key: Automation
         Value: Ansible
+    server_serials:
+      - FCH2712796P
   tasks:
     - name: Configure NTP policy
       cisco.intersight.intersight_ntp_policy:
@@ -102,13 +104,13 @@
         query_params:
           $filter: "Name eq '{{ org_name }}'"
       register: org_resp
-    - include_role:
-        name: isapi
-      vars:
-        display_name: Syslog Policy
-        api_resource_path: "/syslog/Policies"
-        api_query_filter: "Name eq '{{ name_prefix }}-syslog-pol'"
-        want:
+
+    - name: Syslog Policy
+      cisco.intersight.intersight_rest_api:
+        resource_path: /syslog/Policies
+        query_params:
+          $filter: "Name eq '{{ name_prefix }}-syslog-pol'"
+        api_body:
           {
             "Organization":
               {
@@ -144,13 +146,12 @@
               ],
           }
 
-    - include_role:
-        name: isapi
-      vars:
-        display_name: SNMP Policy
-        api_resource_path: "/snmp/Policies"
-        api_query_filter: "Name eq '{{ name_prefix }}-snmp-pol'"
-        want:
+    - name: SNMP Policy
+      cisco.intersight.intersight_rest_api:
+        resource_path: /snmp/Policies
+        query_params:
+          $filter: "Name eq '{{ name_prefix }}-snmp-pol'"
+        api_body:
           {
             "Organization":
               {
@@ -167,13 +168,12 @@
             "SysLocation": "Cloud",
           }
 
-    - include_role:
-        name: isapi
-      vars:
-        display_name: KVM Policy
-        api_resource_path: "/kvm/Policies"
-        api_query_filter: "Name eq '{{ name_prefix }}-kvm-pol'"
-        want:
+    - name: KVM Policy
+      cisco.intersight.intersight_rest_api:
+        resource_path: /kvm/Policies
+        query_params:
+          $filter: "Name eq '{{ name_prefix }}-kvm-pol'"
+        api_body:
           {
             "Organization":
               {
@@ -190,13 +190,12 @@
           }
     - import_tasks: network.yml
 
-    - include_role:
-        name: isapi
-      vars:
-        display_name: BIOS Policy
-        api_resource_path: "/bios/Policies"
-        api_query_filter: "Name eq '{{ name_prefix }}-bios-pol'"
-        want:
+    - name: BIOS Policy
+      cisco.intersight.intersight_rest_api:
+        resource_path: /bios/Policies
+        query_params:
+          $filter: "Name eq '{{ name_prefix }}-bios-pol'"
+        api_body:
           {
             "Organization":
               {
@@ -670,13 +669,12 @@
             "XptRemotePrefetch": "platform-default",
           }
 
-    - include_role:
-        name: isapi
-      vars:
-        display_name: IMC Certificate Policy
-        api_resource_path: "/certificatemanagement/Policies"
-        api_query_filter: "Name eq '{{ name_prefix }}-certificate-pol'"
-        want:
+    - name: IMC Certificate Policy
+      cisco.intersight.intersight_rest_api:
+        resource_path: /certificatemanagement/Policies
+        query_params:
+          $filter: "Name eq '{{ name_prefix }}-certificate-pol'"
+        api_body:
           {
             "Organization":
               {
@@ -700,13 +698,12 @@
             "Tags": [],
           }
 
-    - include_role:
-        name: isapi
-      vars:
-        display_name: Storage Policy
-        api_resource_path: "/storage/StoragePolicies"
-        api_query_filter: "Name eq '{{ name_prefix }}-storage-pol'"
-        want:
+    - name: Storage Policy
+      cisco.intersight.intersight_rest_api:
+        resource_path: /storage/StoragePolicies
+        query_params:
+          $filter: "Name eq '{{ name_prefix }}-storage-pol'"
+        api_body:
           {
             "Organization":
               {
@@ -759,4 +756,5 @@
       include_role:
         name: isserver
       vars:
-        server_serial: FCH2712796P
+        server_serial: "{{ item }}"
+      loop: "{{ server_serials }}"
